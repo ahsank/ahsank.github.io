@@ -19,7 +19,7 @@ ignore = ["node_modules/"]
 generate_rss = true
 website_title = "Ahsan Khan blogs"
 website_descr = "Ahsan Khan tech blogs"
-website_url   = "https://tlienart.github.io/FranklinTemplates.jl/"
+website_url   = "https://ahsank.github.io/"
 +++
 
 <!--
