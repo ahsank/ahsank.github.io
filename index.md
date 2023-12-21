@@ -3,5 +3,6 @@
 
 # Blogs
 
-Following are short blogs on different technologies I interacted with
+Here are brief blogs on various technologies I've engaged with.
 
+* [Benchmarking mutex based synchronization](/posts/MutexBasedSynchronization/)
