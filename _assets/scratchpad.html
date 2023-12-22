@@ -1,0 +1,68 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Topic document</title>
+<style>
+</style>
+<link href="https://unpkg.com/@picocss/pico@1.3.3/css/pico.slim.min.css" rel="stylesheet"/>
+<div id="output"></div>
+<script src="https://unpkg.com/markdown-it@8.4.2/dist/markdown-it.min.js"></script>
+<script src="http://ajax.googleapis.com/ajax/libs/jquery/1/jquery.min.js"></script>
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+</script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/showdown/1.9.0/showdown.min.js"></script>
+
+<!--script src='//coffeescript.org/extras/coffee-script.js'></script-->
+<script>
+ (function() {
+ $(function() {
+  // When using more than one `textarea` on your page, change the following line to match the one you’re after
+  // import markdownItMermaid from 'markdown-it-plugin-mermaid'
+  const md = window.markdownit();
+  var $textarea = $('textarea'),
+      $preview = $('<div id="preview" />').insertBefore($textarea);
+  $textarea.keyup(function() {
+   $preview.html(md.render($textarea.val()));
+   $("pre").addClass("prettyprint");
+
+}).trigger('keyup');
+ });
+ })(document, 'script');
+</script>
+<script type="text/javascript">
+<!--
+function toggle_visibility(id) {
+   var e = document.getElementById(id);
+   if(e.style.display == 'block')
+     e.style.display = 'none';
+   else
+      e.style.display = 'block';
+}
+//-->
+</script>
+<div>Following text is generated from markdown in textarea below</div>
+
+<textarea style="width:700px;height:300px;display:block;" autofocus id='text'>
+Example
+------------
+
+Some Code:
+
+    int main(int argc, char **argv) {
+		printf("Hello world!\n")
+	}
+
+
+Diagram:
+
+```mermaid
+ graph LR
+      A --- B
+      B-->C[fa:fa-ban forbidden]
+      B-->D(fa:fa-spinner);
+```
+</textarea>
+
+<a href="#" onclick="toggle_visibility('text');">Show/hide text area</a>
+
