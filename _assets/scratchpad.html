@@ -9,22 +9,23 @@
 <script src="http://ajax.googleapis.com/ajax/libs/jquery/1/jquery.min.js"></script>
 <script type="module">
   import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+
 </script>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/showdown/1.9.0/showdown.min.js"></script>
 
 <!--script src='//coffeescript.org/extras/coffee-script.js'></script-->
-<script>
+<script type="text/javascript">
  (function() {
  $(function() {
   // When using more than one `textarea` on your page, change the following line to match the one you’re after
-  // import markdownItMermaid from 'markdown-it-plugin-mermaid'
-  const md = window.markdownit();
+  var converter = new showdown.Converter();
   var $textarea = $('textarea'),
       $preview = $('<div id="preview" />').insertBefore($textarea);
   $textarea.keyup(function() {
-   $preview.html(md.render($textarea.val()));
-   $("pre").addClass("prettyprint");
+  var html = converter.makeHtml($textarea.val())
+   $preview.html(html);
+   // $("pre").addClass("prettyprint");
 
 }).trigger('keyup');
  });
@@ -49,10 +50,11 @@ Example
 
 Some Code:
 
-    int main(int argc, char **argv) {
-		printf("Hello world!\n")
-	}
-
+```c
+int main(int argc, char **argv) {
+	printf("Hello world!\n")
+}
+```
 
 Diagram:
 
