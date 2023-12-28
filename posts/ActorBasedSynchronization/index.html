@@ -1,155 +1,159 @@
-<!doctype html> <html lang=en > <meta charset=UTF-8 > <meta name=viewport  content="width=device-width, initial-scale=1"> <link rel=stylesheet  href="/libs/highlight/styles/github.min.css"> <link rel=stylesheet  href="/css/franklin.css"> <link rel=stylesheet  href="/css/basic.css"> <link rel=icon  href="/assets/favicon.png"> <title>Actor Framework in C&#43;&#43;: Efficient Message Passing and Synchronization</title> <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script> <header> <div class=blog-name ><a href="/">Ahsan Khan</a></div> <nav> <ul> <li><a href="/">Main</a> <li><a href="/about//">About</a> </ul> <img src="/assets/hamburger.svg" id=menu-icon > </nav> </header> <div class=franklin-content ><h1 id=actor_framework_in_c_efficient_message_passing_and_synchronization ><a href="#actor_framework_in_c_efficient_message_passing_and_synchronization" class=header-anchor >Actor Framework in C&#43;&#43;: Efficient Message Passing and Synchronization</a></h1> <p>In an actor-based framework, the responsibility for acting on a data structure requiring synchronization lies with a single thread. When other threads need to modify or read data, they send messages to the thread managing the data. These messages are delivered one at a time. It&#39;s assumed that operations on the data structure take a very short amount of time. If the managing thread needs to perform time-consuming I/O operations, they are done asynchronously to avoid blocking and waiting for I/O completion.</p> <p>It can be shown as following diagram:</p> <p>Diagram:</p> <div class=mermaid > graph LR A[Thread1] -->Queue E[Thread2] -->Queue Queue --> B[fa:fa-spinner Actor Thread] B <-->D(Data structure); </div> <h2 id=advantages_and_challenges ><a href="#advantages_and_challenges" class=header-anchor >Advantages and Challenges</a></h2> <p>The advantage of such a system is that the data structure can be accessed by a single thread straightforwardly without the need for locks. However, the challenging factor lies in implementing an efficient message-passing system.</p> <p>To benchmark this system, we&#39;ll use a computational model discussed in the blog post <a href="/posts/MutexBasedSynchronization/">Benchmarking mutex-based synchronization</a>. This model interleaves CPU and I/O operations, where the CPU operation <code>calc&#40;cache&#41;</code> works on a hash table that requires synchronization, and the simulated I/O operation <code>fake_io&#40;sleep_time&#41;</code> just sleeps for a specified duration. We assume that the I/O operation can be parallelized without imposing an additional burden on the CPU. The benchmark will be run for sleep times of 8 and 64 microseconds.</p> <pre><code class="cpp hljs"><span class=hljs-comment >// Code snippet for benchmark common functions</span>
-<span class=hljs-keyword >using</span> cachetype = std::unordered_map&lt;std::string, std::string&gt;;
-<span class=hljs-type >const</span> <span class=hljs-type >unsigned</span> <span class=hljs-type >int</span> max_iter = <span class=hljs-number >1000</span>;
+<!doctype html> <html lang=en > <meta charset=UTF-8 > <meta name=viewport  content="width=device-width, initial-scale=1"> <link rel=stylesheet  href="/libs/highlight/styles/github.min.css"> <link rel=stylesheet  href="/css/franklin.css"> <link rel=stylesheet  href="/css/basic.css"> <link rel=icon  href="/assets/favicon.png"> <title>Actor Framework in C&#43;&#43;: Efficient Message Passing and Synchronization</title> <header> <div class=blog-name ><a href="/">Ahsan Khan</a></div> <nav> <ul> <li><a href="/">Main</a> <li><a href="/about//">About</a> </ul> <img src="/assets/hamburger.svg" id=menu-icon > </nav> </header> <div class=franklin-content ><h1 id=actor_framework_in_c_efficient_message_passing_and_synchronization ><a href="#actor_framework_in_c_efficient_message_passing_and_synchronization" class=header-anchor >Actor Framework in C&#43;&#43;: Efficient Message Passing and Synchronization</a></h1> <p>In an actor-based framework, the responsibility for acting on a data structure requiring synchronization lies with a single thread. When other threads need to modify or read data, they send messages to the thread managing the data. These messages are delivered one at a time. It&#39;s assumed that operations on the data structure take a very short amount of time. If the managing thread needs to perform time-consuming I/O operations, they are done asynchronously to avoid blocking and waiting for I/O completion.</p> <p>It can be shown as following diagram:</p> <pre><code class=language-mermaid >graph LR
+      A&#91;Thread1&#93; --&gt;Queue
+      E&#91;Thread2&#93; --&gt;Queue
+      Queue --&gt; B&#91;fa:fa-spinner Actor Thread&#93;
+      B &lt;--&gt;D&#40;Data structure&#41;;</code></pre> <h2 id=advantages_and_challenges ><a href="#advantages_and_challenges" class=header-anchor >Advantages and Challenges</a></h2> <p>The advantage of such a system is that the data structure can be accessed by a single thread straightforwardly without the need for locks. However, the challenging factor lies in implementing an efficient message-passing system.</p> <p>To benchmark this system, we&#39;ll use a computational model discussed in the blog post <a href="/posts/MutexBasedSynchronization/">Benchmarking mutex-based synchronization</a>. This model interleaves CPU and I/O operations, where the CPU operation <code>calc&#40;cache&#41;</code> works on a hash table that requires synchronization, and the simulated I/O operation <code>fake_io&#40;sleep_time&#41;</code> just sleeps for a specified duration. We assume that the I/O operation can be parallelized without imposing an additional burden on the CPU. The benchmark will be run for sleep times of 8 and 64 microseconds.</p> <pre><code class=language-cpp >// Code snippet for benchmark common functions
+using cachetype &#61; std::unordered_map&lt;std::string, std::string&gt;;
+const unsigned int max_iter &#61; 1000;
 
-<span class=hljs-comment >// Simulate CPU operation by just incrementing a string value</span>
-<span class=hljs-comment >// in a hash table</span>
-<span class=hljs-function ><span class=hljs-keyword >inline</span> std::string <span class=hljs-title >get_key</span><span class=hljs-params >(<span class=hljs-type >int</span> i)</span> </span>{<span class=hljs-keyword >return</span> cache_key + std::<span class=hljs-built_in >to_string</span>(i);}
+// Simulate CPU operation by just incrementing a string value
+// in a hash table
+inline std::string get_key&#40;int i&#41; &#123;return cache_key &#43; std::to_string&#40;i&#41;;&#125;
 
-<span class=hljs-function ><span class=hljs-keyword >inline</span> <span class=hljs-type >void</span> <span class=hljs-title >calc</span><span class=hljs-params >(cachetype&amp; cache)</span> </span>{
-    <span class=hljs-comment >// Some complex calculation</span>
-    <span class=hljs-keyword >for</span> (<span class=hljs-type >int</span> i=<span class=hljs-number >0</span>; i &lt; num_calc; i++) {
-        <span class=hljs-keyword >auto</span> key = <span class=hljs-built_in >get_key</span>(i);
-        <span class=hljs-keyword >auto</span> str = cache[key];
-        cache[key] = str.<span class=hljs-built_in >length</span>() == <span class=hljs-number >0</span> ? <span class=hljs-string >&quot;1&quot;</span> : std::<span class=hljs-built_in >to_string</span>(std::<span class=hljs-built_in >stoi</span>(str) + <span class=hljs-number >1</span>);
-    }
-}
+inline void calc&#40;cachetype&amp; cache&#41; &#123;
+    // Some complex calculation
+    for &#40;int i&#61;0; i &lt; num_calc; i&#43;&#43;&#41; &#123;
+        auto key &#61; get_key&#40;i&#41;;
+        auto str &#61; cache&#91;key&#93;;
+        cache&#91;key&#93; &#61; str.length&#40;&#41; &#61;&#61; 0 ? &quot;1&quot; : std::to_string&#40;std::stoi&#40;str&#41; &#43; 1&#41;;
+    &#125;
+&#125;
 
-<span class=hljs-comment >// Simulate an  IO operation by just sleep</span>
-<span class=hljs-function ><span class=hljs-keyword >inline</span> <span class=hljs-type >void</span> <span class=hljs-title >fake_io</span> <span class=hljs-params >(std::chrono::duratin sleep_time)</span> </span>{
-    std::this_thread::<span class=hljs-built_in >sleep_for</span>(sleep_time);
-}</code></pre> <p>First let&#39;s try to build an actor framework using standard C&#43;&#43; library and later we will use the boost library to implment a another version.</p> <h2 id=simple_multithreaded_queue ><a href="#simple_multithreaded_queue" class=header-anchor >Simple Multithreaded Queue</a></h2> <p>A simple multithreaded queue, with <code>add</code> and get operations, forms the basis for our actor framework. The add operation waits until the queue has capacity and then adds to the end, while the get operation waits until the queue has elements and removes an entry from the beginning.</p> <pre><code class="cpp hljs"><span class=hljs-keyword >template</span> &lt;<span class=hljs-keyword >class</span> <span class="hljs-title class_">T</span>, <span class=hljs-type >int</span> qsize=<span class=hljs-number >100</span>&gt;
-<span class=hljs-keyword >class</span> cond_queue {
-<span class=hljs-keyword >public</span>:
+// Simulate an  IO operation by just sleep
+inline void fake_io &#40;std::chrono::duratin sleep_time&#41; &#123;
+    std::this_thread::sleep_for&#40;sleep_time&#41;;
+&#125;</code></pre> <p>First let&#39;s try to build an actor framework using standard C&#43;&#43; library and later we will use the boost library to implment a another version.</p> <h2 id=simple_multithreaded_queue ><a href="#simple_multithreaded_queue" class=header-anchor >Simple Multithreaded Queue</a></h2> <p>A simple multithreaded queue, with <code>add</code> and get operations, forms the basis for our actor framework. The add operation waits until the queue has capacity and then adds to the end, while the get operation waits until the queue has elements and removes an entry from the beginning.</p> <pre><code class=language-cpp >template &lt;class T, int qsize&#61;100&gt;
+class cond_queue &#123;
+public:
     std::queue&lt;T&gt; buff;
-    <span class=hljs-keyword >volatile</span> <span class=hljs-type >bool</span> closed = <span class=hljs-literal >false</span>;
-    <span class=hljs-comment >// See https://en.cppreference.com/w/cpp/thread/condition_variable</span>
+    volatile bool closed &#61; false;
+    // See https://en.cppreference.com/w/cpp/thread/condition_variable
     std::mutex m_mutex;
     std::condition_variable m_cv;
 
-    <span class=hljs-built_in >cond_queue</span>() {
-    }
-    <span class=hljs-function ><span class=hljs-type >void</span> <span class=hljs-title >add</span><span class=hljs-params >(T val)</span> </span>{
-        {
-            <span class=hljs-function >std::unique_lock&lt;std::mutex&gt; <span class=hljs-title >the_lock</span><span class=hljs-params >(m_mutex)</span></span>;
-            <span class=hljs-keyword >while</span> (buff.<span class=hljs-built_in >size</span>() &gt;= qsize) {
-                m_cv.<span class=hljs-built_in >wait</span>(the_lock, [<span class=hljs-keyword >this</span>] {
-                    <span class=hljs-keyword >return</span> buff.<span class=hljs-built_in >size</span>() &lt; qsize;
-                });
-            }
-            buff.<span class=hljs-built_in >push</span>(std::<span class=hljs-built_in >move</span>(val));
-        }
-        m_cv.<span class=hljs-built_in >notify_one</span>();
-    }
+    cond_queue&#40;&#41; &#123;
+    &#125;
+    void add&#40;T val&#41; &#123;
+        &#123;
+            std::unique_lock&lt;std::mutex&gt; the_lock&#40;m_mutex&#41;;
+            while &#40;buff.size&#40;&#41; &gt;&#61; qsize&#41; &#123;
+                m_cv.wait&#40;the_lock, &#91;this&#93; &#123;
+                    return buff.size&#40;&#41; &lt; qsize;
+                &#125;&#41;;
+            &#125;
+            buff.push&#40;std::move&#40;val&#41;&#41;;
+        &#125;
+        m_cv.notify_one&#40;&#41;;
+    &#125;
 
-    <span class=hljs-function ><span class=hljs-type >void</span> <span class=hljs-title >close</span><span class=hljs-params >()</span> </span>{
-        {
-            <span class=hljs-function >std::unique_lock&lt;std::mutex&gt; <span class=hljs-title >the_lock</span><span class=hljs-params >(m_mutex)</span></span>;
-            closed = <span class=hljs-literal >true</span>;
-        }
-        m_cv.<span class=hljs-built_in >notify_all</span>();
-    }
+    void close&#40;&#41; &#123;
+        &#123;
+            std::unique_lock&lt;std::mutex&gt; the_lock&#40;m_mutex&#41;;
+            closed &#61; true;
+        &#125;
+        m_cv.notify_all&#40;&#41;;
+    &#125;
     
-    <span class=hljs-function >std::pair&lt;T, <span class=hljs-type >bool</span>&gt; <span class=hljs-title >get</span><span class=hljs-params >()</span> </span>{
+    std::pair&lt;T, bool&gt; get&#40;&#41; &#123;
         T val;
-        <span class=hljs-type >bool</span> is_closed = <span class=hljs-literal >false</span>;
-        {
-            <span class=hljs-function >std::unique_lock&lt;std::mutex&gt; <span class=hljs-title >the_lock</span><span class=hljs-params >(m_mutex)</span></span>;
-            <span class=hljs-keyword >while</span> ( buff.<span class=hljs-built_in >empty</span>() &amp;&amp; !closed) {
-                m_cv.<span class=hljs-built_in >wait</span>(the_lock, [<span class=hljs-keyword >this</span>] {
-                    <span class=hljs-keyword >return</span> !buff.<span class=hljs-built_in >empty</span>() || closed;
-                });
-            }
+        bool is_closed &#61; false;
+        &#123;
+            std::unique_lock&lt;std::mutex&gt; the_lock&#40;m_mutex&#41;;
+            while &#40; buff.empty&#40;&#41; &amp;&amp; &#33;closed&#41; &#123;
+                m_cv.wait&#40;the_lock, &#91;this&#93; &#123;
+                    return &#33;buff.empty&#40;&#41; || closed;
+                &#125;&#41;;
+            &#125;
 
-            <span class=hljs-keyword >if</span> (!buff.<span class=hljs-built_in >empty</span>()) {
-                val = std::<span class=hljs-built_in >move</span>(buff.<span class=hljs-built_in >front</span>());
-                buff.<span class=hljs-built_in >pop</span>();
-            } <span class=hljs-keyword >else</span> {
-                is_closed = closed;  
-            }
-        }
-        m_cv.<span class=hljs-built_in >notify_one</span>();
-        <span class=hljs-keyword >return</span> std::<span class=hljs-built_in >make_pair</span>(std::<span class=hljs-built_in >move</span>(val), is_closed);
-    }
-};</code></pre> <p>Using this queue, we implement an actor-based class for our hashtable.</p> <pre><code class="julia hljs">class CacheActor {
+            if &#40;&#33;buff.empty&#40;&#41;&#41; &#123;
+                val &#61; std::move&#40;buff.front&#40;&#41;&#41;;
+                buff.pop&#40;&#41;;
+            &#125; else &#123;
+                is_closed &#61; closed;  
+            &#125;
+        &#125;
+        m_cv.notify_one&#40;&#41;;
+        return std::make_pair&#40;std::move&#40;val&#41;, is_closed&#41;;
+    &#125;
+&#125;;</code></pre> <p>Using this queue, we implement an actor-based class for our hashtable.</p> <pre><code class=language-julia >class CacheActor &#123;
 public:
     cachetype cache;
-    <span class=hljs-keyword >using</span> tasktype = std::packaged_task&lt;void(cachetype&amp;)&gt;;
+    using tasktype &#61; std::packaged_task&lt;void&#40;cachetype&amp;&#41;&gt;;
     cond_queue&lt;tasktype&gt; cqueue;
     std::thread actor_thread;
 
-    void start() {
-        actor_thread = std::thread([&amp;] {
-            <span class=hljs-keyword >while</span> (<span class=hljs-literal >true</span>) {
-                auto [task, closed] = cqueue.get();
-                <span class=hljs-keyword >if</span> (closed) {
-                    <span class=hljs-keyword >break</span>;
-                }
-                task(cache);
-            }
-        });
-    }
+    void start&#40;&#41; &#123;
+        actor_thread &#61; std::thread&#40;&#91;&amp;&#93; &#123;
+            while &#40;true&#41; &#123;
+                auto &#91;task, closed&#93; &#61; cqueue.get&#40;&#41;;
+                if &#40;closed&#41; &#123;
+                    break;
+                &#125;
+                task&#40;cache&#41;;
+            &#125;
+        &#125;&#41;;
+    &#125;
 
-    void stop() {
-        cqueue.close();
-        actor_thread.join();
-    }
+    void stop&#40;&#41; &#123;
+        cqueue.close&#40;&#41;;
+        actor_thread.join&#40;&#41;;
+    &#125;
 
-    std::future&lt;void&gt; do_calc() {
-        tasktype calctask(calc);
-        auto fut = calctask.get_future();
-        cqueue.add(std::move(calctask));
-        <span class=hljs-keyword >return</span> fut;
-    }
-};</code></pre> <p>Note that operations on the hash table are serialized by the queue and executed by a single thread. We run the benchmark with 1000 parallel tasks, and the calculation operations are done through the actor framework, serializing the operation.</p> <p>Following is the function to benchmark:</p> <pre><code class="julia hljs">void cache_calc_queue(CacheActor&amp; actor,
-    std::chrono::microseconds sleep_time) {
-    actor.start();
+    std::future&lt;void&gt; do_calc&#40;&#41; &#123;
+        tasktype calctask&#40;calc&#41;;
+        auto fut &#61; calctask.get_future&#40;&#41;;
+        cqueue.add&#40;std::move&#40;calctask&#41;&#41;;
+        return fut;
+    &#125;
+&#125;;</code></pre> <p>Note that operations on the hash table are serialized by the queue and executed by a single thread. We run the benchmark with 1000 parallel tasks, and the calculation operations are done through the actor framework, serializing the operation.</p> <p>Following is the function to benchmark:</p> <pre><code class=language-julia >void cache_calc_queue&#40;CacheActor&amp; actor,
+    std::chrono::microseconds sleep_time&#41; &#123;
+    actor.start&#40;&#41;;
     std::vector&lt;std::future&lt;void&gt;&gt; futures;
-    <span class=hljs-keyword >for</span> (int i=<span class=hljs-number >0</span>; i &lt; max_iter; i++) {
-        futures.push_back(std::async(std::launch::async,
-                [&amp;actor, sleep_time] {
-                    actor.do_calc().wait();
-                    fake_io(sleep_time);
-                    actor.do_calc().wait();
-                }));
-    }
-    <span class=hljs-keyword >for</span>(auto&amp; f : futures) {
-        f.wait();
-    }
-    actor.stop();
-}</code></pre> <h3 id=benchmark_results ><a href="#benchmark_results" class=header-anchor >Benchmark results</a></h3> <pre><code class="console hljs">---------------------------------------------------------------------
+    for &#40;int i&#61;0; i &lt; max_iter; i&#43;&#43;&#41; &#123;
+        futures.push_back&#40;std::async&#40;std::launch::async,
+                &#91;&amp;actor, sleep_time&#93; &#123;
+                    actor.do_calc&#40;&#41;.wait&#40;&#41;;
+                    fake_io&#40;sleep_time&#41;;
+                    actor.do_calc&#40;&#41;.wait&#40;&#41;;
+                &#125;&#41;&#41;;
+    &#125;
+    for&#40;auto&amp; f : futures&#41; &#123;
+        f.wait&#40;&#41;;
+    &#125;
+    actor.stop&#40;&#41;;
+&#125;</code></pre> <h3 id=benchmark_results ><a href="#benchmark_results" class=header-anchor >Benchmark results</a></h3> <pre><code class=language-console >---------------------------------------------------------------------
 Benchmark                           Time             CPU   Iterations
 ---------------------------------------------------------------------
 BM_cachecalc_queue/8             23.6 ms         21.9 ms           30
-BM_cachecalc_queue/64            23.3 ms         21.7 ms           32</code></pre> <p>Comparing to the previous benchmark, we see significant performance improvements.</p> <h2 id=boost_implementation ><a href="#boost_implementation" class=header-anchor >Boost Implementation</a></h2> <p>Now, let&#39;s explore a boost-based implementation of the same benchmark using a <a href="https://live.boost.org/doc/libs/1_84_0/doc/html/boost_asio/overview/core/strands.html">strand</a> to serialize access.</p> <pre><code class="cpp hljs"><span class=hljs-function ><span class=hljs-type >static</span> <span class=hljs-type >void</span> <span class=hljs-title >BM_cachecalc_threadpool</span><span class=hljs-params >(benchmark::State&amp; state)</span> </span>{
-    boost::<span class=hljs-function >asio::thread_pool <span class=hljs-title >pool</span><span class=hljs-params >(num_tasks)</span></span>;
-    boost::<span class=hljs-function >asio::thread_pool <span class=hljs-title >calcpool</span><span class=hljs-params >(<span class=hljs-number >1</span>)</span></span>;
-    <span class=hljs-keyword >auto</span> strand_ = <span class=hljs-built_in >make_strand</span>(calcpool.<span class=hljs-built_in >get_executor</span>());
-    std::chrono::microseconds sleep_time = std::chrono::<span class=hljs-built_in >microseconds</span>(state.<span class=hljs-built_in >range</span>(<span class=hljs-number >0</span>));
-    <span class=hljs-keyword >for</span> (<span class=hljs-keyword >auto</span> _ : state) {
+BM_cachecalc_queue/64            23.3 ms         21.7 ms           32</code></pre> <p>Comparing to the previous benchmark, we see significant performance improvements.</p> <h2 id=boost_implementation ><a href="#boost_implementation" class=header-anchor >Boost Implementation</a></h2> <p>Now, let&#39;s explore a boost-based implementation of the same benchmark using a <a href="https://live.boost.org/doc/libs/1_84_0/doc/html/boost_asio/overview/core/strands.html">strand</a> to serialize access.</p> <pre><code class=language-cpp >static void BM_cachecalc_threadpool&#40;benchmark::State&amp; state&#41; &#123;
+    boost::asio::thread_pool pool&#40;num_tasks&#41;;
+    boost::asio::thread_pool calcpool&#40;1&#41;;
+    auto strand_ &#61; make_strand&#40;calcpool.get_executor&#40;&#41;&#41;;
+    std::chrono::microseconds sleep_time &#61; std::chrono::microseconds&#40;state.range&#40;0&#41;&#41;;
+    for &#40;auto _ : state&#41; &#123;
         cachetype cache;
-        std::vector&lt;boost::future&lt;<span class=hljs-type >void</span>&gt; &gt; futures;
-        futures.<span class=hljs-built_in >reserve</span>(max_iter);
-        <span class=hljs-keyword >auto</span> fn = [&amp;] {
-            <span class=hljs-keyword >auto</span> f = boost::asio::<span class=hljs-built_in >post</span>(strand_, std::<span class=hljs-built_in >packaged_task</span>&lt;<span class=hljs-built_in >void</span>()&gt;([&amp;] {
-                <span class=hljs-built_in >calc</span>(cache);
-            }));
-            f.<span class=hljs-built_in >wait</span>();
-            <span class=hljs-built_in >fake_io</span>(sleep_time);
-            <span class=hljs-keyword >auto</span> f1 = boost::asio::<span class=hljs-built_in >post</span>(strand_, std::<span class=hljs-built_in >packaged_task</span>&lt;<span class=hljs-built_in >void</span>()&gt;([&amp;] {
-                <span class=hljs-built_in >calc</span>(cache);
-            }));
-            f1.<span class=hljs-built_in >wait</span>();
-        };
-        <span class=hljs-keyword >for</span> (<span class=hljs-type >int</span> i=<span class=hljs-number >0</span>; i &lt; max_iter; i++) {
-            <span class=hljs-function >boost::packaged_task&lt;<span class=hljs-title >void</span><span class=hljs-params >()</span>&gt; <span class=hljs-title >task</span><span class=hljs-params >(fn)</span></span>;
-            futures.<span class=hljs-built_in >push_back</span>(task.<span class=hljs-built_in >get_future</span>());
-            boost::asio::<span class=hljs-built_in >post</span>(pool, std::<span class=hljs-built_in >move</span>(task));
-        }
-        boost::<span class=hljs-built_in >wait_for_all</span>(futures.<span class=hljs-built_in >begin</span>(), futures.<span class=hljs-built_in >end</span>());
-        <span class=hljs-built_in >checkWork</span>(state, cache);
-    }
-}</code></pre> <h3 id=benchmark_resuls ><a href="#benchmark_resuls" class=header-anchor >Benchmark Resuls</a></h3> <p>Following is the benchmark result of boost based implemenatation</p> <pre><code class="console hljs">---------------------------------------------------------------------
+        std::vector&lt;boost::future&lt;void&gt; &gt; futures;
+        futures.reserve&#40;max_iter&#41;;
+        auto fn &#61; &#91;&amp;&#93; &#123;
+            auto f &#61; boost::asio::post&#40;strand_, std::packaged_task&lt;void&#40;&#41;&gt;&#40;&#91;&amp;&#93; &#123;
+                calc&#40;cache&#41;;
+            &#125;&#41;&#41;;
+            f.wait&#40;&#41;;
+            fake_io&#40;sleep_time&#41;;
+            auto f1 &#61; boost::asio::post&#40;strand_, std::packaged_task&lt;void&#40;&#41;&gt;&#40;&#91;&amp;&#93; &#123;
+                calc&#40;cache&#41;;
+            &#125;&#41;&#41;;
+            f1.wait&#40;&#41;;
+        &#125;;
+        for &#40;int i&#61;0; i &lt; max_iter; i&#43;&#43;&#41; &#123;
+            boost::packaged_task&lt;void&#40;&#41;&gt; task&#40;fn&#41;;
+            futures.push_back&#40;task.get_future&#40;&#41;&#41;;
+            boost::asio::post&#40;pool, std::move&#40;task&#41;&#41;;
+        &#125;
+        boost::wait_for_all&#40;futures.begin&#40;&#41;, futures.end&#40;&#41;&#41;;
+        checkWork&#40;state, cache&#41;;
+    &#125;
+&#125;</code></pre> <h3 id=benchmark_resuls ><a href="#benchmark_resuls" class=header-anchor >Benchmark Resuls</a></h3> <p>Following is the benchmark result of boost based implemenatation</p> <pre><code class=language-console >---------------------------------------------------------------------
 Benchmark                           Time             CPU   Iterations
 ---------------------------------------------------------------------
 BM_cachecalc_threadpool/8        17.1 ms         2.68 ms          274
