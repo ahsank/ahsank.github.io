@@ -13,8 +13,8 @@ Diagram:
  graph LR
       A[Thread1] -->Queue
       E[Thread2] -->Queue
-      Queue --> B[fa:fa-ban Actor Thread]
-      B <-->D(fa:fa-spinner Data structure);
+      Queue --> B[fa:fa-spinner Actor Thread]
+      B <-->D(Data structure);
 </div>
 ~~~
 
