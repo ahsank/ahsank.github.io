@@ -1,22 +1,17 @@
-@def hasdiagram = true
-
 # Actor Framework in C++: Efficient Message Passing and Synchronization
 
 In an actor-based framework, the responsibility for acting on a data structure requiring synchronization lies with a single thread. When other threads need to modify or read data, they send messages to the thread managing the data. These messages are delivered one at a time. It's assumed that operations on the data structure take a very short amount of time. If the managing thread needs to perform time-consuming I/O operations, they are done asynchronously to avoid blocking and waiting for I/O completion.
 
 It can be shown as following diagram:
 
-Diagram:
 
-~~~
-<div class="mermaid">
+```mermaid
  graph LR
       A[Thread1] -->Queue
       E[Thread2] -->Queue
       Queue --> B[fa:fa-spinner Actor Thread]
       B <-->D(Data structure);
-</div>
-~~~
+```
 
 
 ## Advantages and Challenges
