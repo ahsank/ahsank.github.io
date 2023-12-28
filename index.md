@@ -5,5 +5,5 @@
 
 Here are brief blogs on various technologies I've engaged with.
 
-* [Actor Based Synchronization] (/posts/ActorBasedSynchronization/)
+* [Actor Based Framework] (/posts/ActorBasedSynchronization/)
 * [Benchmarking mutex based synchronization](/posts/MutexBasedSynchronization/)
