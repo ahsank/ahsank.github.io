@@ -5,5 +5,5 @@
 
 Here are brief blogs on various technologies I've engaged with.
 
-* [Scratchpad] (/posts/ScratchpadNote/)
+* [Actor Based Synchronization] (/posts/ActorBasedSynchronization/)
 * [Benchmarking mutex based synchronization](/posts/MutexBasedSynchronization/)
