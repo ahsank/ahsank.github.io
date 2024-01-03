@@ -189,7 +189,7 @@ BM_cachecalc_queue/8             23.6 ms         21.9 ms           30
 BM_cachecalc_queue/64            23.3 ms         21.7 ms           32
 ```
 
-Comparing to the previous benchmark, we see significant performance improvements.
+Comparing to the previous mutex based implementation benchmark, we see it is less performant.
 
 
 ## Boost Implementation
