@@ -1,6 +1,6 @@
-Mutex-Based Synchronization: Understanding Performance Impacts
+# Mutex-Based Synchronization: Understanding Performance Impacts
 
-When designing a high-performance systems, an early decision is to select the appropriate memory model and synchronization strategy. Consider a simple multithreaded cache manager with a single interface: `get(key) -> value`, where the key represents the file name and the value represents its content. Here the `get` operation checks if the entry is present in the hash table. If not, the system loads the content from disk, inserts it into the hash table, and then returns the content.
+When designing a high-performance systems, an early decision is to select the appropriate memory model and synchronization strategy. Consider a simple multithreaded cache manager with a single interface: `get(key) -> value`, where the key represents the file name and the value represents its content. Here the `get` operation checks if the entry is present in the hash table. If not, then loads the content from disk, inserts it into the hash table, and then returns the content.
 
 Even for this basic system, synchronization of access to the hash table is necessary. The pseudocode for such a system can be summarized as follows:
 
@@ -30,9 +30,9 @@ In this blog, I will do benchmarks to find how mutex locking affects performance
 
 The benchmark time  heavily depends on the IO library and the intricacies of the computer system. In this blog, my primary goal is not to compare different IO libraries; rather, to measure the performance impact of the locking mechanism. To simplify simulating IO operations I initially thought of just using the sleep function. However then found that the minimum time duration the API could reliably sleep (without oversleeping) was approximately 1 millisecond, which seems impractical for mimicking realistic loads.
 
-To determine a more realistic IO time, I did an experiment writing an 8KB memory to disk, which completed in less than 10 microseconds. Notably, reading from disk was even faster. Therefore an IO time ranging from 10 to 100 microseconds seemed reasonable for our benchmarking purposes.
+To determine a more realistic IO time, I did an experiment writing an 8KB memory to disk, which completed in less than 10 microseconds. Reading from disk was even faster. Therefore an IO time ranging from 10 to 100 microseconds seemed reasonable for our benchmarking purposes.
 
-To exemplify, if I benchmark the following function sleeps of 8 and 64 microseconds:
+To exemplify, if I benchmark the following function which just sleeps for 8 and 64 microseconds:
 
 ```cpp
 struct sleep_io {
@@ -55,11 +55,11 @@ The benchmark results indicate that the actual time slept was considerably large
 
 Benchmark        |             Time     |       CPU | Iterations
 -----------------|----------------------|-----------|-----------
-BM_sleep/8       |          83.6 us     |   4.25 us |     100000
-BM_sleep/64      |           154 us     |   4.41 us |     100000
+`BM_sleep/8`       |          83.6 us     |   4.25 us |     100000
+`BM_sleep/64`      |           154 us     |   4.41 us |     100000
 
 
-This prompted me to develop  a custom fake_io operation operation using `/dev/zero` on Linux and Mac OSX.
+This prompted me to develop  a custom fake_io operation operation. It just reads from `/dev/zero` so will only work in Linux and Mac OSX.
 
 ```
 // More accurate sleep
@@ -100,8 +100,8 @@ BENCHMARK(BM_sleep_devzero)->Unit(benchmark::kMicrosecond)->Range(8, 64);
 
 Benchmark            |         Time     |       CPU | Iterations
 ---------------------|------------------|-----------|-----------
-BM_sleep_devzero/8   |      8.91 us     |   8.87 us |      75051
-BM_sleep_devzero/64  |      64.8 us     |   64.8 us |      10818
+`BM_sleep_devzero/8`   |      8.91 us     |   8.87 us |      75051
+`BM_sleep_devzero/64`  |      64.8 us     |   64.8 us |      10818
 
 
 After determining the strategy for IO operation simulation, I used a CPU-intensive operation that increments an integer value and saves the value in a hash table as a string. This operation is representative of scenarios where data structure synchronization is necessary.
@@ -154,8 +154,8 @@ The benchmark results for 1000 iterations:
 
 Benchmark          |           Time    |        CPU | Iterations
 -------------------|-------------------|------------|-----------
-BM_cachecalc/8     |        10.1 ms    |    10.0 ms |         68
-BM_cachecalc/64    |        65.8 ms    |    65.8 ms |         11
+`BM_cachecalc/8`     |        10.1 ms    |    10.0 ms |         68
+`BM_cachecalc/64`    |        65.8 ms    |    65.8 ms |         11
 
 
 
@@ -186,8 +186,8 @@ Benchmark results with mutex:
 
 Benchmark               |      Time    |        CPU | Iterations
 ------------------------|--------------|------------|-----------
-BM_cachecalc_mutex/8    |   10.3 ms    |    10.2 ms |         68
-BM_cachecalc_mutex/64   |   66.7 ms    |    66.7 ms |         11
+`BM_cachecalc_mutex/8`    |   10.3 ms    |    10.2 ms |         68
+`BM_cachecalc_mutex/64`   |   66.7 ms    |    66.7 ms |         11
 
 
 The code and benchmark results for distributing work among 8 threads are as follows:
@@ -229,11 +229,10 @@ static void cache_calc_async(cachetype& map, std::chrono::microseconds sleep_tim
 
 Benchmark results for 8 threads:
 
-------------------------|--------------|------------|-----------
 Benchmark               |      Time    |        CPU | Iterations
 ------------------------|--------------|------------|-----------
-BM_cachecalc_async/8    |   10.0 ms    |    9.66 ms |         66
-BM_cachecalc_async/64   |   23.6 ms    |    12.0 ms |         61
+`BM_cachecalc_async/8`    |   10.0 ms    |    9.66 ms |         66
+`BM_cachecalc_async/64`   |   23.6 ms    |    12.0 ms |         61
 
 
 
