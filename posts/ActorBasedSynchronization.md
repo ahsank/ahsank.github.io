@@ -18,7 +18,7 @@ It can be shown as following diagram:
 
 The advantage of such a system is that the data structure can be accessed by a single thread straightforwardly without the need for locks. However, the challenging factor lies in implementing an efficient message-passing system.
 
-To benchmark this system, we'll use a computational model discussed in the blog post [Benchmarking mutex-based synchronization](/posts/MutexBasedSynchronization/). This model interleaves CPU and I/O operations, where the CPU operation `calc(cache)` works on a hash table that requires synchronization, and the simulated I/O operation `fake_io(sleep_time)` just sleeps for a specified duration. We assume that the I/O operation can be parallelized without imposing an additional burden on the CPU. The benchmark will be run for sleep times of 8 and 64 microseconds.
+To benchmark this system, we'll use a computational model discussed in the blog post [Benchmarking mutex-based synchronization](/posts/MutexBasedSynchronization/). This model interleaves CPU and I/O operations, where the CPU operation `calc(cache)` works on a hash table that requires synchronization, and the simulated I/O operation `fake_io(sleep_time)` just sleeps for a specified duration or reads from `/dev/zero`. We assume that the I/O operation can be parallelized without imposing an additional burden on the CPU. The benchmark will be run for sleep times of 8 and 64 microseconds.
 
 
 ```cpp
@@ -62,23 +62,23 @@ class cond_queue {
 public:
     std::queue<T> buff;
     volatile bool closed = false;
-    // See https://en.cppreference.com/w/cpp/thread/condition_variable
     std::mutex m_mutex;
-    std::condition_variable m_cv;
+     // See https://en.cppreference.com/w/cpp/thread/condition_variable
+
+    std::condition_variable cvnotempty;
+    std::condition_variable cvnotfull;
 
     cond_queue() {
     }
     void add(T val) {
         {
             std::unique_lock<std::mutex> the_lock(m_mutex);
-            while (buff.size() >= qsize) {
-                m_cv.wait(the_lock, [this] {
-                    return buff.size() < qsize;
-                });
-            }
+            cvnotfull.wait(the_lock, [this] {
+                return buff.size() < qsize;
+            });
             buff.push(std::move(val));
         }
-        m_cv.notify_one();
+        cvnotempty.notify_one();
     }
 
     void close() {
@@ -86,28 +86,30 @@ public:
             std::unique_lock<std::mutex> the_lock(m_mutex);
             closed = true;
         }
-        m_cv.notify_all();
+        cvnotempty.notify_all();
     }
     
     std::pair<T, bool> get() {
         T val;
         bool is_closed = false;
+        bool popped = false;
         {
             std::unique_lock<std::mutex> the_lock(m_mutex);
-            while ( buff.empty() && !closed) {
-                m_cv.wait(the_lock, [this] {
-                    return !buff.empty() || closed;
-                });
-            }
+            cvnotempty.wait(the_lock, [this] {
+                return !buff.empty() || closed;
+            });
 
             if (!buff.empty()) {
                 val = std::move(buff.front());
                 buff.pop();
+                popped = true;
             } else {
                 is_closed = closed;  
             }
         }
-        m_cv.notify_one();
+        if (popped) {
+            cvnotfull.notify_one();
+        }
         return std::make_pair(std::move(val), is_closed);
     }
 };
@@ -185,8 +187,8 @@ void cache_calc_queue(CacheActor& actor,
 ---------------------------------------------------------------------
 Benchmark                           Time             CPU   Iterations
 ---------------------------------------------------------------------
-BM_cachecalc_queue/8             23.6 ms         21.9 ms           30
-BM_cachecalc_queue/64            23.3 ms         21.7 ms           32
+BM_cachecalc_queue/8             27.9 ms         25.4 ms           30
+BM_cachecalc_queue/64            46.1 ms         25.5 ms           32
 ```
 
 Comparing to the previous mutex based implementation benchmark, we see it is less performant.
@@ -239,11 +241,11 @@ Following is the benchmark result of boost based implemenatation
 ---------------------------------------------------------------------
 Benchmark                           Time             CPU   Iterations
 ---------------------------------------------------------------------
-BM_cachecalc_threadpool/8        17.1 ms         2.68 ms          274
-BM_cachecalc_threadpool/64       27.2 ms         3.58 ms          100
+BM_cachecalc_threadpool/8        8.28 ms         2.03 ms          274
+BM_cachecalc_threadpool/64       27.9 ms         2.73 ms          100
 ```
 
-This boost-based implementation shows some performance gain compared to our basic implementation.
+This boost-based implementation shows some performance gain compared to mutex based implementation.
 
 The complete code for the benchmarks can be found [here](https://github.com/ahsank/EvaluateIPC/blob/master/tests/boostbench.cc).
 
