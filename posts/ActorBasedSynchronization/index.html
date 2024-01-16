@@ -2,7 +2,7 @@
       A&#91;Thread1&#93; --&gt;Queue
       E&#91;Thread2&#93; --&gt;Queue
       Queue --&gt; B&#91;fa:fa-spinner Actor Thread&#93;
-      B &lt;--&gt;D&#40;Data structure&#41;;</code></pre> <h2 id=advantages_and_challenges ><a href="#advantages_and_challenges" class=header-anchor >Advantages and Challenges</a></h2> <p>The advantage of such a system is that the data structure can be accessed by a single thread straightforwardly without the need for locks. However, the challenging factor lies in implementing an efficient message-passing system.</p> <p>To benchmark this system, we&#39;ll use a computational model discussed in the blog post <a href="/posts/MutexBasedSynchronization/">Benchmarking mutex-based synchronization</a>. This model interleaves CPU and I/O operations, where the CPU operation <code>calc&#40;cache&#41;</code> works on a hash table that requires synchronization, and the simulated I/O operation <code>fake_io&#40;sleep_time&#41;</code> just sleeps for a specified duration. We assume that the I/O operation can be parallelized without imposing an additional burden on the CPU. The benchmark will be run for sleep times of 8 and 64 microseconds.</p> <pre><code class=language-cpp >// Code snippet for benchmark common functions
+      B &lt;--&gt;D&#40;Data structure&#41;;</code></pre> <h2 id=advantages_and_challenges ><a href="#advantages_and_challenges" class=header-anchor >Advantages and Challenges</a></h2> <p>The advantage of such a system is that the data structure can be accessed by a single thread straightforwardly without the need for locks. However, the challenging factor lies in implementing an efficient message-passing system.</p> <p>To benchmark this system, we&#39;ll use a computational model discussed in the blog post <a href="/posts/MutexBasedSynchronization/">Benchmarking mutex-based synchronization</a>. This model interleaves CPU and I/O operations, where the CPU operation <code>calc&#40;cache&#41;</code> works on a hash table that requires synchronization, and the simulated I/O operation <code>fake_io&#40;sleep_time&#41;</code> just sleeps for a specified duration or reads from <code>/dev/zero</code>. We assume that the I/O operation can be parallelized without imposing an additional burden on the CPU. The benchmark will be run for sleep times of 8 and 64 microseconds.</p> <pre><code class=language-cpp >// Code snippet for benchmark common functions
 using cachetype &#61; std::unordered_map&lt;std::string, std::string&gt;;
 const unsigned int max_iter &#61; 1000;
 
@@ -27,23 +27,23 @@ class cond_queue &#123;
 public:
     std::queue&lt;T&gt; buff;
     volatile bool closed &#61; false;
-    // See https://en.cppreference.com/w/cpp/thread/condition_variable
     std::mutex m_mutex;
-    std::condition_variable m_cv;
+     // See https://en.cppreference.com/w/cpp/thread/condition_variable
+
+    std::condition_variable cvnotempty;
+    std::condition_variable cvnotfull;
 
     cond_queue&#40;&#41; &#123;
     &#125;
     void add&#40;T val&#41; &#123;
         &#123;
             std::unique_lock&lt;std::mutex&gt; the_lock&#40;m_mutex&#41;;
-            while &#40;buff.size&#40;&#41; &gt;&#61; qsize&#41; &#123;
-                m_cv.wait&#40;the_lock, &#91;this&#93; &#123;
-                    return buff.size&#40;&#41; &lt; qsize;
-                &#125;&#41;;
-            &#125;
+            cvnotfull.wait&#40;the_lock, &#91;this&#93; &#123;
+                return buff.size&#40;&#41; &lt; qsize;
+            &#125;&#41;;
             buff.push&#40;std::move&#40;val&#41;&#41;;
         &#125;
-        m_cv.notify_one&#40;&#41;;
+        cvnotempty.notify_one&#40;&#41;;
     &#125;
 
     void close&#40;&#41; &#123;
@@ -51,28 +51,30 @@ public:
             std::unique_lock&lt;std::mutex&gt; the_lock&#40;m_mutex&#41;;
             closed &#61; true;
         &#125;
-        m_cv.notify_all&#40;&#41;;
+        cvnotempty.notify_all&#40;&#41;;
     &#125;
     
     std::pair&lt;T, bool&gt; get&#40;&#41; &#123;
         T val;
         bool is_closed &#61; false;
+        bool popped &#61; false;
         &#123;
             std::unique_lock&lt;std::mutex&gt; the_lock&#40;m_mutex&#41;;
-            while &#40; buff.empty&#40;&#41; &amp;&amp; &#33;closed&#41; &#123;
-                m_cv.wait&#40;the_lock, &#91;this&#93; &#123;
-                    return &#33;buff.empty&#40;&#41; || closed;
-                &#125;&#41;;
-            &#125;
+            cvnotempty.wait&#40;the_lock, &#91;this&#93; &#123;
+                return &#33;buff.empty&#40;&#41; || closed;
+            &#125;&#41;;
 
             if &#40;&#33;buff.empty&#40;&#41;&#41; &#123;
                 val &#61; std::move&#40;buff.front&#40;&#41;&#41;;
                 buff.pop&#40;&#41;;
+                popped &#61; true;
             &#125; else &#123;
                 is_closed &#61; closed;  
             &#125;
         &#125;
-        m_cv.notify_one&#40;&#41;;
+        if &#40;popped&#41; &#123;
+            cvnotfull.notify_one&#40;&#41;;
+        &#125;
         return std::make_pair&#40;std::move&#40;val&#41;, is_closed&#41;;
     &#125;
 &#125;;</code></pre> <p>Using this queue, we implement an actor-based class for our hashtable.</p> <pre><code class=language-julia >class CacheActor &#123;
@@ -124,8 +126,8 @@ public:
 &#125;</code></pre> <h3 id=benchmark_results ><a href="#benchmark_results" class=header-anchor >Benchmark results</a></h3> <pre><code class=language-console >---------------------------------------------------------------------
 Benchmark                           Time             CPU   Iterations
 ---------------------------------------------------------------------
-BM_cachecalc_queue/8             23.6 ms         21.9 ms           30
-BM_cachecalc_queue/64            23.3 ms         21.7 ms           32</code></pre> <p>Comparing to the previous mutex based implementation benchmark, we see it is less performant.</p> <h2 id=boost_implementation ><a href="#boost_implementation" class=header-anchor >Boost Implementation</a></h2> <p>Now, let&#39;s explore a boost-based implementation of the same benchmark using a <a href="https://live.boost.org/doc/libs/1_84_0/doc/html/boost_asio/overview/core/strands.html">strand</a> to serialize access.</p> <pre><code class=language-cpp >static void BM_cachecalc_threadpool&#40;benchmark::State&amp; state&#41; &#123;
+BM_cachecalc_queue/8             27.9 ms         25.4 ms           30
+BM_cachecalc_queue/64            46.1 ms         25.5 ms           32</code></pre> <p>Comparing to the previous mutex based implementation benchmark, we see it is less performant.</p> <h2 id=boost_implementation ><a href="#boost_implementation" class=header-anchor >Boost Implementation</a></h2> <p>Now, let&#39;s explore a boost-based implementation of the same benchmark using a <a href="https://live.boost.org/doc/libs/1_84_0/doc/html/boost_asio/overview/core/strands.html">strand</a> to serialize access.</p> <pre><code class=language-cpp >static void BM_cachecalc_threadpool&#40;benchmark::State&amp; state&#41; &#123;
     boost::asio::thread_pool pool&#40;num_tasks&#41;;
     boost::asio::thread_pool calcpool&#40;1&#41;;
     auto strand_ &#61; make_strand&#40;calcpool.get_executor&#40;&#41;&#41;;
@@ -156,5 +158,5 @@ BM_cachecalc_queue/64            23.3 ms         21.7 ms           32</code></pr
 &#125;</code></pre> <h3 id=benchmark_resuls ><a href="#benchmark_resuls" class=header-anchor >Benchmark Resuls</a></h3> <p>Following is the benchmark result of boost based implemenatation</p> <pre><code class=language-console >---------------------------------------------------------------------
 Benchmark                           Time             CPU   Iterations
 ---------------------------------------------------------------------
-BM_cachecalc_threadpool/8        17.1 ms         2.68 ms          274
-BM_cachecalc_threadpool/64       27.2 ms         3.58 ms          100</code></pre> <p>This boost-based implementation shows some performance gain compared to our basic implementation.</p> <p>The complete code for the benchmarks can be found <a href="https://github.com/ahsank/EvaluateIPC/blob/master/tests/boostbench.cc">here</a>.</p> <script src="https://utteranc.es/client.js" repo="ahsank/ahsank.github.io" issue-term=pathname  label=Comment  theme=github-light  crossorigin=anonymous  async> </script> <div class=page-foot > <a href="http://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> Ahsan Khan. Last modified: January 09, 2024. Website built with <a href="https://github.com/tlienart/Franklin.jl">Franklin.jl</a>. </div> </div> <script src="/libs/highlight/highlight.min.js"></script> <script>hljs.highlightAll();hljs.configure({tabReplace: ' '});</script>
+BM_cachecalc_threadpool/8        8.28 ms         2.03 ms          274
+BM_cachecalc_threadpool/64       27.9 ms         2.73 ms          100</code></pre> <p>This boost-based implementation shows some performance gain compared to mutex based implementation.</p> <p>The complete code for the benchmarks can be found <a href="https://github.com/ahsank/EvaluateIPC/blob/master/tests/boostbench.cc">here</a>.</p> <script src="https://utteranc.es/client.js" repo="ahsank/ahsank.github.io" issue-term=pathname  label=Comment  theme=github-light  crossorigin=anonymous  async> </script> <div class=page-foot > <a href="http://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a> Ahsan Khan. Last modified: January 16, 2024. Website built with <a href="https://github.com/tlienart/Franklin.jl">Franklin.jl</a>. </div> </div> <script src="/libs/highlight/highlight.min.js"></script> <script>hljs.highlightAll();hljs.configure({tabReplace: ' '});</script>
